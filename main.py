@@ -1,31 +1,61 @@
-"""Entrypoint for the news-image-20261121 entry.
+"""Deliver the pre-rendered news poster to the grader output directory.
 
-Running this file produces news.png next to this script:
-a deterministic one-page broadsheet poster at 1024x1024.
-The output path is anchored to this file's folder so the
-result lands in the repo root no matter where it is run from.
+The poster image (news.png) was rendered beforehand and is committed
+alongside this script. At grading time the environment is standard
+library only and the repository is mounted read-only, so this program
+does no rendering at all: it simply copies the committed poster to
+$MAKEFUN_OUTPUT_DIR/entry.png, following the kit's copy pattern.
 """
 
 import os
-
-from render import render
-
-OUTPUT_NAME = "news.png"
-EXPECTED_SIZE = (1024, 1024)
+import shutil
+import sys
+from pathlib import Path
 
 
-def output_path():
-    here = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(here, OUTPUT_NAME)
+def find_poster() -> Path:
+    """Return the path of the poster stored next to this script."""
+    return Path(__file__).resolve().parent / "news.png"
 
 
-def main():
-    target = output_path()
-    render(target)
-    # Lightweight sanity note for anyone running it by hand.
-    size = os.path.getsize(target)
-    print(f"Wrote {target} ({size} bytes, expected canvas {EXPECTED_SIZE[0]}x{EXPECTED_SIZE[1]})")
+def resolve_output_dir() -> Path:
+    """Return the directory the grader expects the entry in.
+
+    Uses MAKEFUN_OUTPUT_DIR when the grader provides it and falls
+    back to the current working directory for local runs.
+    """
+    raw = os.environ.get("MAKEFUN_OUTPUT_DIR")
+    if raw:
+        return Path(raw)
+    return Path.cwd()
+
+
+def main() -> int:
+    poster = find_poster()
+    if not poster.is_file():
+        print(f"error: poster not found next to script: {poster}", file=sys.stderr)
+        return 1
+
+    output_dir = resolve_output_dir()
+    try:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        destination = output_dir / "entry.png"
+        shutil.copyfile(poster, destination)
+    except OSError as exc:
+        print(f"error: could not deliver poster: {exc}", file=sys.stderr)
+        return 1
+
+    size = destination.stat().st_size
+    if size != poster.stat().st_size:
+        print(
+            f"error: copied file size mismatch ({size} != {poster.stat().st_size})",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(f"Copied {poster.name} ({size} bytes) to {destination}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
